@@ -4,24 +4,15 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class Settings:
-    gemini_api_key: str = os.getenv("GEMINI_API_KEY", "")
-    pollinations_api_key: str = os.getenv("POLLINATIONS_API_KEY", "")
-
-    image_provider: str = os.getenv("IMAGE_PROVIDER", "both").lower()
-
-    gemini_image_model: str = os.getenv(
-        "GEMINI_IMAGE_MODEL",
-        "gemini-3.1-flash-image",
+    cloudflare_account_id: str = os.getenv(
+        "CLOUDFLARE_ACCOUNT_ID", ""
+    )
+    cloudflare_api_token: str = os.getenv(
+        "CLOUDFLARE_API_TOKEN", ""
     )
 
-    gemini_text_model: str = os.getenv(
-        "GEMINI_TEXT_MODEL",
-        "gemini-2.5-flash",
-    )
-
-    pollinations_image_model: str = os.getenv(
-        "POLLINATIONS_IMAGE_MODEL",
-        "black-forest-labs/flux.1-schnell",
+    image_model: str = (
+        "@cf/black-forest-labs/flux-1-schnell"
     )
 
     width: int = int(os.getenv("VIDEO_WIDTH", "1080"))
@@ -29,16 +20,14 @@ class Settings:
     fps: int = int(os.getenv("VIDEO_FPS", "24"))
     scene_seconds: int = int(os.getenv("SCENE_SECONDS", "5"))
 
+    # Keep inference conservative. FLUX.1 Schnell supports up to 8.
+    image_steps: int = int(os.getenv("IMAGE_STEPS", "4"))
+
     @property
-    def providers(self) -> list[str]:
-        if self.image_provider == "both":
-            return ["gemini", "pollinations"]
-
-        if self.image_provider in {"gemini", "pollinations"}:
-            return [self.image_provider]
-
-        raise ValueError(
-            "IMAGE_PROVIDER must be both, gemini, or pollinations"
+    def cloudflare_url(self) -> str:
+        return (
+            "https://api.cloudflare.com/client/v4/accounts/"
+            f"{self.cloudflare_account_id}/ai/run/{self.image_model}"
         )
 
 

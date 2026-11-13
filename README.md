@@ -1,85 +1,120 @@
 # Hand-Drawn Documentary
 
-A cinematic documentary and Reels generator built with Python,
-Gemini and Pollinations.
+A free-first cinematic documentary and Reels generator.
 
-Each narration scene receives its own AI-generated illustration.
-The project aims for a hand-drawn historical documentary aesthetic,
-not a fixed collection of icons or flat vector graphics.
+Every narration scene receives its own generated image using
+Cloudflare Workers AI and FLUX.1 Schnell.
 
-## Visual direction
+## Main visual direction
 
 - Uneven organic ink outlines
-- Variable line weight and sketch marks
-- Pencil texture and cross-hatching
-- Soft ink-wash and watercolor shading
-- Detailed historical environments and fabric folds
-- Warm cream parchment and restrained gold accents
-- Unique composition for each narration scene
-- Slow camera push and gradual irregular reveal
+- Variable line thickness
+- Pencil and cross-hatching texture
+- Soft watercolor and ink-wash shading
+- Detailed environments and fabric folds
+- Warm parchment and restrained antique-gold accents
+- A unique composition for every narration scene
+- Slow camera push and irregular image reveal
 
-## Image providers
+This is not a fixed icon or flat vector illustration system.
 
-Gemini writes scene-specific image prompts and is the first
-image-generation provider.
+## Free-first architecture
 
-Pollinations is the fallback image-generation provider.
+- GitHub Actions for video generation
+- Cloudflare Workers AI for image generation
+- FLUX.1 Schnell image model
+- Local Python scene prompt composer
+- Pillow for image processing
+- FFmpeg for MP4 rendering
 
-Both providers are configured through GitHub Actions secrets.
+No Gemini API.
+No Pollinations API.
+No .env file.
+No paid provider fallback.
 
-## Repository setup
+## Cloudflare free allowance
 
-Create these repository secrets:
+Workers AI currently provides 10,000 Neurons per day
+on the Free plan.
 
-- GEMINI_API_KEY
-- POLLINATIONS_API_KEY
+The allowance resets at 00:00 UTC.
 
-No .env file is required.
+When the free allowance is exhausted, inference requests
+may fail. This project does not automatically switch to
+a paid provider.
 
-## Add narration
+Check current limits and pricing:
 
-Create a text file in scripts/.
+https://developers.cloudflare.com/workers-ai/platform/pricing/
 
-Separate scenes with a blank line. Each paragraph becomes
-a separate scene and receives its own visual prompt and illustration.
+## Setup
 
-## Generate a video
+1. Create a Cloudflare account.
+2. Enable Workers AI.
+3. Create an API token with permission to use Workers AI.
+4. Find your Cloudflare Account ID.
+5. Add both values as GitHub repository secrets.
 
-1. Open the repository's Actions tab.
-2. Select Make Documentary Video.
-3. Select Run workflow.
-4. Choose the narration script path.
-5. Optionally provide an audio path.
+Required secrets:
+
+- CLOUDFLARE_ACCOUNT_ID
+- CLOUDFLARE_API_TOKEN
+
+Never put API tokens in source files.
+
+## Generate a documentary
+
+1. Open the Actions tab.
+2. Select Make Hand-Drawn Documentary.
+3. Click Run workflow.
+4. Choose a narration file.
+5. Optionally provide narration audio.
 6. Start the workflow.
 
-## Output artifacts
+## Narration format
 
-The workflow uploads:
+Create a text file inside scripts/.
 
-- handdrawn-documentary-video
-- generated-scene-artwork
+Separate scenes with blank lines.
 
-Download them from the completed workflow run.
+Every paragraph becomes one scene and receives its own
+visual prompt and generated illustration.
+
+## Output
+
+The workflow creates:
+
+output/documentary.mp4
+
+generated_art/scene_001.png
+generated_art/scene_001_prompt.txt
+generated_art/scene_002.png
+generated_art/scene_002_prompt.txt
+
+Download the results from the Actions artifacts.
 
 ## Historical and religious care
 
-The prompt system prohibits depicting Prophet Muhammad in any form,
-including silhouettes and shadows. It also prohibits depicting
-other prophets.
+The prompt system prohibits depicting Prophet Muhammad
+in any form, including a face, body, silhouette or shadow.
 
-Uncertain historical details should not be presented as established fact.
+It also prohibits depicting other prophets.
+
+Uncertain historical details should not be presented
+as established facts.
 
 ## Current limitations
 
-- The first version uses a gradual irregular reveal mask, not true
-  individual pen-stroke animation.
-- Camera movement is a slow Ken Burns-style push and drift.
-- Scene duration is currently configured as a fixed number of seconds.
-- Narration audio is supplied by the user.
-- API usage and image generation may incur provider charges.
+- Prompt composition is local and rule-based, not LLM-powered.
+- The first version uses an irregular reveal mask rather than
+  actual individual pen-stroke animation.
+- Camera movement uses a slow push.
+- Scene duration is currently fixed.
+- The image model's visual quality and composition need testing.
+- Free inference availability and limits can change.
 
 ## Tests
 
-The GitHub Actions workflow runs:
+Run:
 
-    pytest -q
+pytest -q

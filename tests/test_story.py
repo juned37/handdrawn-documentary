@@ -1,17 +1,19 @@
 from pathlib import Path
 
+import pytest
+
 from engine.story import load_story
 
 
-def test_story_is_split_into_scenes(tmp_path: Path):
-    story_file = tmp_path / "story.txt"
+def test_story_creates_one_scene_per_paragraph(tmp_path: Path):
+    path = tmp_path / "story.txt"
 
-    story_file.write_text(
-        "First scene narration.\n\nSecond scene narration.",
+    path.write_text(
+        "First scene.\n\nSecond scene.",
         encoding="utf-8",
     )
 
-    scenes = load_story(str(story_file), default_duration=6)
+    scenes = load_story(str(path), 6)
 
     assert len(scenes) == 2
     assert scenes[0].index == 1
@@ -19,12 +21,9 @@ def test_story_is_split_into_scenes(tmp_path: Path):
     assert scenes[0].duration == 6
 
 
-def test_empty_story_raises_error(tmp_path: Path):
-    story_file = tmp_path / "empty.txt"
-    story_file.write_text("   ", encoding="utf-8")
+def test_empty_story_is_rejected(tmp_path: Path):
+    path = tmp_path / "empty.txt"
+    path.write_text("  ", encoding="utf-8")
 
-    try:
-        load_story(str(story_file))
-        assert False, "Expected ValueError"
-    except ValueError:
-        pass
+    with pytest.raises(ValueError):
+        load_story(str(path))

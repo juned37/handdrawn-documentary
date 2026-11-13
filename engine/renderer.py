@@ -16,9 +16,9 @@ def _font(size: int):
         "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
     ]
 
-    for path in candidates:
-        if Path(path).exists():
-            return ImageFont.truetype(path, size=size)
+    for candidate in candidates:
+        if Path(candidate).exists():
+            return ImageFont.truetype(candidate, size)
 
     return ImageFont.load_default()
 
@@ -26,10 +26,9 @@ def _font(size: int):
 def _caption(frame: Image.Image, text: str) -> Image.Image:
     draw = ImageDraw.Draw(frame, "RGBA")
     width, height = frame.size
-
     font = _font(max(25, width // 25))
-    max_width = width - 100
 
+    max_width = width - 100
     lines = []
     current = ""
 
@@ -54,7 +53,7 @@ def _caption(frame: Image.Image, text: str) -> Image.Image:
     draw.rounded_rectangle(
         (35, top, width - 35, height - 45),
         radius=18,
-        fill=(239, 229, 207, 205),
+        fill=(239, 229, 207, 210),
         outline=(95, 72, 45, 130),
         width=2,
     )
@@ -80,12 +79,14 @@ def _caption(frame: Image.Image, text: str) -> Image.Image:
 def _animate_frame(
     artwork: Image.Image,
     progress: float,
-    reveal_noise: Image.Image,
-    caption: str,
+    noise: Image.Image,
+    narration: str,
 ) -> Image.Image:
+
     width, height = artwork.size
 
-    zoom = 1.0 + (0.09 * progress)
+    # Gentle documentary camera push.
+    zoom = 1.0 + 0.08 * progress
 
     scaled = artwork.resize(
         (int(width * zoom), int(height * zoom)),
@@ -95,22 +96,25 @@ def _animate_frame(
     extra_x = scaled.width - width
     extra_y = scaled.height - height
 
-    left = int(extra_x * (0.35 + 0.20 * progress))
-    top = int(extra_y * (0.35 + 0.20 * progress))
+    left = int(extra_x * 0.4)
+    top = int(extra_y * 0.4)
 
-    frame = scaled.crop((left, top, left + width, top + height))
+    frame = scaled.crop(
+        (left, top, left + width, top + height)
+    )
 
+    # Irregular progressive reveal, not simulated vector strokes.
     threshold = int(progress * 255)
 
-    mask = reveal_noise.point(
+    mask = noise.point(
         lambda value: 255 if value <= threshold else 0
     )
     mask = mask.filter(ImageFilter.GaussianBlur(3))
 
-    blank = Image.new("RGB", (width, height), (239, 229, 207))
-    frame = Image.composite(frame, blank, mask)
+    paper = Image.new("RGB", (width, height), (239, 229, 207))
+    frame = Image.composite(frame, paper, mask)
 
-    return _caption(frame, caption)
+    return _caption(frame, narration)
 
 
 def render_video(
@@ -119,8 +123,9 @@ def render_video(
     output_path: str = "output/documentary.mp4",
     narration_audio: str | None = None,
 ) -> Path:
+
     if len(scenes) != len(image_paths):
-        raise ValueError("Every scene must have one image.")
+        raise ValueError("Each scene needs exactly one image.")
 
     width = settings.width
     height = settings.height
@@ -139,11 +144,8 @@ def render_video(
     )
 
     try:
-        for scene, image_path in zip(scenes, image_paths):
-            artwork = prepare_artwork(
-                image_path,
-                (width, height),
-            )
+        for scene, path in zip(scenes, image_paths):
+            artwork = prepare_artwork(path, (width, height))
 
             frame_count = max(1, int(scene.duration * fps))
 
@@ -156,7 +158,7 @@ def render_video(
                 dtype=np.uint8,
             )
 
-            reveal_noise = Image.fromarray(noise, mode="L")
+            reveal = Image.fromarray(noise, mode="L")
 
             for frame_number in range(frame_count):
                 progress = frame_number / max(1, frame_count - 1)
@@ -164,7 +166,7 @@ def render_video(
                 frame = _animate_frame(
                     artwork,
                     progress,
-                    reveal_noise,
+                    reveal,
                     scene.narration,
                 )
 
@@ -174,33 +176,33 @@ def render_video(
         writer.close()
 
     if narration_audio:
-        audio_path = Path(narration_audio)
+        audio = Path(narration_audio)
 
-        if not audio_path.exists():
-            raise FileNotFoundError(
-                f"Audio file not found: {audio_path}"
-            )
+        if not audio.exists():
+            raise FileNotFoundError(audio)
 
         ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
         muxed = output.with_name(
-            f"{output.stem}_with_audio.mp4"
+            f"{output.stem}_audio.mp4"
         )
 
-        command = [
-            ffmpeg,
-            "-y",
-            "-i", str(output),
-            "-i", str(audio_path),
-            "-map", "0:v:0",
-            "-map", "1:a:0",
-            "-c:v", "copy",
-            "-c:a", "aac",
-            "-shortest",
-            "-movflags", "+faststart",
-            str(muxed),
-        ]
+        subprocess.run(
+            [
+                ffmpeg,
+                "-y",
+                "-i", str(output),
+                "-i", str(audio),
+                "-map", "0:v:0",
+                "-map", "1:a:0",
+                "-c:v", "copy",
+                "-c:a", "aac",
+                "-shortest",
+                "-movflags", "+faststart",
+                str(muxed),
+            ],
+            check=True,
+        )
 
-        subprocess.run(command, check=True)
         muxed.replace(output)
 
     return output

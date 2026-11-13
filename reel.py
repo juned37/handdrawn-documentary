@@ -11,7 +11,7 @@ from engine.renderer import render_video
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Generate a hand-drawn documentary video."
+        description="Generate a hand-drawn documentary."
     )
 
     parser.add_argument(
@@ -19,10 +19,7 @@ def main():
         default="scripts/example.txt",
     )
 
-    parser.add_argument(
-        "--audio",
-        default=None,
-    )
+    parser.add_argument("--audio", default=None)
 
     parser.add_argument(
         "--output",
@@ -36,8 +33,11 @@ def main():
         format="%(asctime)s | %(levelname)s | %(message)s",
     )
 
-    if not settings.gemini_api_key:
-        raise RuntimeError("GEMINI_API_KEY is missing.")
+    if not settings.cloudflare_account_id:
+        raise RuntimeError("CLOUDFLARE_ACCOUNT_ID is missing.")
+
+    if not settings.cloudflare_api_token:
+        raise RuntimeError("CLOUDFLARE_API_TOKEN is missing.")
 
     scenes = load_story(
         args.script,
@@ -47,35 +47,33 @@ def main():
     image_paths = []
 
     for scene in scenes:
-        logging.info("Creating prompt for scene %s", scene.index)
+        logging.info("Preparing scene %s", scene.index)
 
-        scene.visual_prompt = create_visual_prompt(scene)
+        prompt = create_visual_prompt(scene)
 
-        prompt_file = Path("generated_art") / (
-            f"scene_{scene.index:03d}_prompt.txt"
+        prompt_path = (
+            Path("generated_art")
+            / f"scene_{scene.index:03d}_prompt.txt"
         )
-        prompt_file.parent.mkdir(parents=True, exist_ok=True)
 
-        prompt_file.write_text(
-            scene.visual_prompt,
-            encoding="utf-8",
-        )
+        prompt_path.parent.mkdir(parents=True, exist_ok=True)
+        prompt_path.write_text(prompt, encoding="utf-8")
 
         image_path = generate_scene_image(
-            scene.visual_prompt,
+            prompt,
             scene.index,
         )
 
         image_paths.append(image_path)
 
     result = render_video(
-        scenes=scenes,
-        image_paths=image_paths,
+        scenes,
+        image_paths,
         output_path=args.output,
         narration_audio=args.audio,
     )
 
-    logging.info("Video generated: %s", result)
+    logging.info("Video created: %s", result)
 
 
 if __name__ == "__main__":

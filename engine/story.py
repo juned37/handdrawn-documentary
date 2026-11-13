@@ -11,7 +11,11 @@ class Scene:
     visual_prompt: str = ""
 
 
-def load_story(path: str, default_duration: float = 5.0) -> list[Scene]:
+def load_story(
+    path: str,
+    default_duration: float = 5.0,
+) -> list[Scene]:
+
     text = Path(path).read_text(encoding="utf-8").strip()
 
     paragraphs = [
@@ -21,13 +25,13 @@ def load_story(path: str, default_duration: float = 5.0) -> list[Scene]:
     ]
 
     if not paragraphs:
-        raise ValueError("The story file contains no narration.")
+        raise ValueError("The story file is empty.")
 
     return [
         Scene(
-            index=index,
+            index=i,
             narration=paragraph,
             duration=default_duration,
         )
-        for index, paragraph in enumerate(paragraphs, start=1)
+        for i, paragraph in enumerate(paragraphs, 1)
     ]

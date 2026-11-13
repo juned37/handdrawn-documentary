@@ -1,80 +1,16 @@
+import base64
 import logging
-import time
 from pathlib import Path
-from urllib.parse import quote
 
 import requests
-from google import genai
-from google.genai import types
 
 from engine.config import settings
 
 logger = logging.getLogger(__name__)
 
 
-def _generate_with_gemini(prompt: str, destination: Path) -> None:
-    if not settings.gemini_api_key:
-        raise RuntimeError("GEMINI_API_KEY is not configured.")
-
-    client = genai.Client(api_key=settings.gemini_api_key)
-
-    response = client.models.generate_content(
-        model=settings.gemini_image_model,
-        contents=prompt,
-        config=types.GenerateContentConfig(
-            response_modalities=["IMAGE"],
-            image_config=types.ImageConfig(
-                aspect_ratio="9:16",
-            ),
-        ),
-    )
-
-    for part in response.parts:
-        if part.inline_data is not None:
-            part.as_image().save(destination)
-            return
-
-    raise RuntimeError("Gemini returned no image.")
-
-
-def _generate_with_pollinations(
-    prompt: str,
-    destination: Path,
-) -> None:
-    if not settings.pollinations_api_key:
-        raise RuntimeError("POLLINATIONS_API_KEY is not configured.")
-
-    encoded_prompt = quote(prompt, safe="")
-    url = f"https://gen.pollinations.ai/image/{encoded_prompt}"
-
-    headers = {
-        "Authorization": f"Bearer {settings.pollinations_api_key}",
-    }
-
-    params = {
-        "model": settings.pollinations_image_model,
-        "width": 1024,
-        "height": 1792,
-        "nologo": "true",
-        "private": "true",
-    }
-
-    response = requests.get(
-        url,
-        headers=headers,
-        params=params,
-        timeout=(30, 300),
-    )
-    response.raise_for_status()
-
-    content_type = response.headers.get("Content-Type", "")
-
-    if not content_type.startswith("image/"):
-        raise RuntimeError(
-            f"Unexpected Pollinations response: {content_type}"
-        )
-
-    destination.write_bytes(response.content)
+class FreeQuotaExhausted(RuntimeError):
+    """Raised when Cloudflare's free inference quota is exhausted."""
 
 
 def generate_scene_image(
@@ -82,49 +18,72 @@ def generate_scene_image(
     scene_index: int,
     output_dir: str = "generated_art",
 ) -> Path:
+
+    if not settings.cloudflare_account_id:
+        raise RuntimeError("CLOUDFLARE_ACCOUNT_ID is missing.")
+
+    if not settings.cloudflare_api_token:
+        raise RuntimeError("CLOUDFLARE_API_TOKEN is missing.")
+
+    if not 1 <= settings.image_steps <= 8:
+        raise ValueError("IMAGE_STEPS must be between 1 and 8.")
+
     folder = Path(output_dir)
     folder.mkdir(parents=True, exist_ok=True)
 
     destination = folder / f"scene_{scene_index:03d}.png"
 
     if destination.exists() and destination.stat().st_size > 10_000:
-        logger.info("Using cached image: %s", destination)
+        logger.info("Using cached image %s", destination)
         return destination
 
-    generators = {
-        "gemini": _generate_with_gemini,
-        "pollinations": _generate_with_pollinations,
+    headers = {
+        "Authorization": f"Bearer {settings.cloudflare_api_token}",
+        "Content-Type": "application/json",
     }
 
-    errors = []
+    payload = {
+        "prompt": prompt[:2048],
+        "steps": settings.image_steps,
+        "seed": scene_index * 7919,
+    }
 
-    for provider in settings.providers:
-        for attempt in range(2):
-            try:
-                logger.info(
-                    "Generating scene %s using %s",
-                    scene_index,
-                    provider,
-                )
+    try:
+        response = requests.post(
+            settings.cloudflare_url,
+            headers=headers,
+            json=payload,
+            timeout=300,
+        )
+    except requests.RequestException as exc:
+        raise RuntimeError(
+            f"Cloudflare request failed: {exc}"
+        ) from exc
 
-                generators[provider](prompt, destination)
+    if response.status_code in (402, 403, 429):
+        raise FreeQuotaExhausted(
+            "Cloudflare rejected the inference request. "
+            "The free quota may be exhausted or the token may lack "
+            f"permission. HTTP {response.status_code}. "
+            "The workflow will stop; no paid fallback is configured."
+        )
 
-                if not destination.exists() or destination.stat().st_size < 10_000:
-                    raise RuntimeError("Generated image is invalid.")
+    response.raise_for_status()
 
-                return destination
+    try:
+        data = response.json()
+        image_data = data["result"]["image"]
+        image_bytes = base64.b64decode(image_data, validate=True)
+    except (ValueError, KeyError, TypeError) as exc:
+        raise RuntimeError(
+            "Cloudflare returned an unexpected image response."
+        ) from exc
 
-            except Exception as exc:
-                logger.warning(
-                    "%s failed on attempt %s: %s",
-                    provider,
-                    attempt + 1,
-                    exc,
-                )
-                errors.append(f"{provider}: {exc}")
-                time.sleep(2)
+    if len(image_bytes) < 10_000:
+        raise RuntimeError("Generated image is unexpectedly small.")
 
-    raise RuntimeError(
-        f"All image providers failed for scene {scene_index}: "
-        + " | ".join(errors)
-    )
+    destination.write_bytes(image_bytes)
+
+    logger.info("Saved scene artwork: %s", destination)
+
+    return destination

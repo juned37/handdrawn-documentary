@@ -1,14 +1,14 @@
-name: Make Documentary Video
+name: Make Hand-Drawn Documentary
 
 on:
   workflow_dispatch:
     inputs:
       script:
-        description: "Narration file inside the repository"
+        description: "Narration file"
         required: true
         default: "scripts/example.txt"
       audio:
-        description: "Optional narration audio path"
+        description: "Optional narration audio file"
         required: false
         default: ""
 
@@ -18,16 +18,16 @@ permissions:
 jobs:
   generate:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 60
 
     env:
-      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-      POLLINATIONS_API_KEY: ${{ secrets.POLLINATIONS_API_KEY }}
-      IMAGE_PROVIDER: both
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       VIDEO_WIDTH: 1080
       VIDEO_HEIGHT: 1920
       VIDEO_FPS: 24
       SCENE_SECONDS: 5
+      IMAGE_STEPS: 4
 
     steps:
       - name: Checkout repository
@@ -44,50 +44,54 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ffmpeg
 
-      - name: Install Python dependencies
+      - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Validate API secrets
+      - name: Validate Cloudflare credentials
+        shell: bash
         run: |
-          if [ -z "$GEMINI_API_KEY" ]; then
-            echo "GEMINI_API_KEY is missing."
+          test -n "$CLOUDFLARE_ACCOUNT_ID" || {
+            echo "CLOUDFLARE_ACCOUNT_ID is missing"
             exit 1
-          fi
+          }
 
-          if [ -z "$POLLINATIONS_API_KEY" ]; then
-            echo "POLLINATIONS_API_KEY is missing."
+          test -n "$CLOUDFLARE_API_TOKEN" || {
+            echo "CLOUDFLARE_API_TOKEN is missing"
             exit 1
-          fi
+          }
 
       - name: Run tests
         run: pytest -q
 
-      - name: Generate documentary
+      - name: Generate video
+        env:
+          SCRIPT_PATH: ${{ inputs.script }}
+          AUDIO_PATH: ${{ inputs.audio }}
         shell: bash
         run: |
-          if [ -n "${{ inputs.audio }}" ]; then
+          if [ -n "$AUDIO_PATH" ]; then
             python reel.py \
-              --script "${{ inputs.script }}" \
-              --audio "${{ inputs.audio }}"
+              --script "$SCRIPT_PATH" \
+              --audio "$AUDIO_PATH"
           else
             python reel.py \
-              --script "${{ inputs.script }}"
+              --script "$SCRIPT_PATH"
           fi
 
-      - name: Upload generated video
+      - name: Upload MP4
         uses: actions/upload-artifact@v4
         with:
-          name: handdrawn-documentary-video
+          name: documentary-video
           path: output/documentary.mp4
           if-no-files-found: error
           retention-days: 7
 
-      - name: Upload scene illustrations and prompts
+      - name: Upload scene artwork
         uses: actions/upload-artifact@v4
         with:
-          name: generated-scene-artwork
+          name: documentary-scene-artwork
           path: generated_art/
           if-no-files-found: warn
           retention-days: 7

@@ -1,0 +1,93 @@
+name: Make Documentary Video
+
+on:
+  workflow_dispatch:
+    inputs:
+      script:
+        description: "Narration file inside the repository"
+        required: true
+        default: "scripts/example.txt"
+      audio:
+        description: "Optional narration audio path"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    env:
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      POLLINATIONS_API_KEY: ${{ secrets.POLLINATIONS_API_KEY }}
+      IMAGE_PROVIDER: both
+      VIDEO_WIDTH: 1080
+      VIDEO_HEIGHT: 1920
+      VIDEO_FPS: 24
+      SCENE_SECONDS: 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install FFmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Validate API secrets
+        run: |
+          if [ -z "$GEMINI_API_KEY" ]; then
+            echo "GEMINI_API_KEY is missing."
+            exit 1
+          fi
+
+          if [ -z "$POLLINATIONS_API_KEY" ]; then
+            echo "POLLINATIONS_API_KEY is missing."
+            exit 1
+          fi
+
+      - name: Run tests
+        run: pytest -q
+
+      - name: Generate documentary
+        shell: bash
+        run: |
+          if [ -n "${{ inputs.audio }}" ]; then
+            python reel.py \
+              --script "${{ inputs.script }}" \
+              --audio "${{ inputs.audio }}"
+          else
+            python reel.py \
+              --script "${{ inputs.script }}"
+          fi
+
+      - name: Upload generated video
+        uses: actions/upload-artifact@v4
+        with:
+          name: handdrawn-documentary-video
+          path: output/documentary.mp4
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload scene illustrations and prompts
+        uses: actions/upload-artifact@v4
+        with:
+          name: generated-scene-artwork
+          path: generated_art/
+          if-no-files-found: warn
+          retention-days: 7
